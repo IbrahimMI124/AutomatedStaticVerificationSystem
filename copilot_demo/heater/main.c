@@ -6,18 +6,18 @@
 uint8_t temperature;
 
 void heaton(float temp) {
-    printf("Heater ON (temp = %.2f C)\n", temp);
+    printf("    Heater ON (temp = %.2f C)\n", temp);
 }
 
 void heatoff(float temp) {
-    printf("Heater OFF (temp = %.2f C)\n", temp);
+    printf("    Heater OFF (temp = %.2f C)\n", temp);
 }
 
 int main() {
 
-    uint8_t values[] = {100,120,140,160,180,200,220,240,200,180,150,120,100};
+    uint8_t values[] = {100,120,140,160,180,200,220,240,200,180,150,120,100};//raw sensor values from 0-255
     int n = sizeof(values)/sizeof(values[0]);
-
+    //we want the temp to always be in the range 18-21 deg C
     for(int i=0;i<n;i++) {
 
         temperature = values[i];

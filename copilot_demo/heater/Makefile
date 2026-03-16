@@ -4,9 +4,10 @@ CFLAGS = -std=c99 -Wall
 
 # files
 TARGET = heater
-HS_SPEC = Heater.hs
+HS_SPEC = heater.hs
 C_MONITOR = heater.c
 H_MONITOR = heater.h
+H_MONITOR_TYPES = heater_types.h
 MAIN = main.c
 
 all: $(TARGET)
@@ -25,4 +26,5 @@ run: $(TARGET)
 
 # remove generated files
 clean:
-	rm -f $(TARGET) $(C_MONITOR) $(H_MONITOR)
+	rm -f $(TARGET) $(C_MONITOR) $(H_MONITOR) $(H_MONITOR_TYPES)
+
