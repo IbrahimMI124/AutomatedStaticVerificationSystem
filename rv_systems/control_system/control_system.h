@@ -1,0 +1,13 @@
+extern bool startup;
+extern float output;
+extern float ref;
+extern float u;
+extern bool disturbance;
+extern float velocity;
+extern float control;
+void viol_post_condition(void);
+void viol_startup_stabilize(void);
+void viol_actuator_saturation(void);
+void viol_temporal_consistency(void);
+void viol_bounded_stabilisation(void);
+void step(void);
