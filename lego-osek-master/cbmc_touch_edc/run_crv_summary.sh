@@ -44,6 +44,7 @@ UNWIND="$UNWIND_VAL" make -s gen >/dev/null 2>&1 || true
 run_one "touch input"       "cbmc_crv_touch"       || true
 run_one "EDC_flag"          "cbmc_crv_edc"         || true
 run_one "touch_sensor_state" "cbmc_crv_touch_state" || true
+run_one "Steering Angle" "cbmc_crv_steering" || true
 
 echo
 printf '%s\n' "Tip: run with traces (for CRV cases):" \

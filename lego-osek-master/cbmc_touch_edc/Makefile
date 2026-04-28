@@ -68,6 +68,17 @@ cbmc_crv_edc: gen
 		--property main.assertion.1 \
 		$(SRCS_COMMON)
 
+cbmc_crv_steering: gen
+	cbmc -DCBMC -DRV_MONITOR -DSEU_TARGET=4 $(INCLUDES) \
+		--function main \
+		--unwind $(UNWIND) \
+		--no-standard-checks --no-built-in-assertions \
+		--no-bounds-check --no-pointer-check --no-signed-overflow-check --no-div-by-zero-check \
+		--no-undefined-shift-check --no-pointer-primitive-check \
+		--slice-formula \
+		--property main.assertion.1 \
+		$(SRCS_COMMON)
+
 cbmc_crv_touch_state: gen
 	cbmc -DCBMC -DRV_MONITOR -DSEU_TARGET=3 $(INCLUDES) \
 		--function main \

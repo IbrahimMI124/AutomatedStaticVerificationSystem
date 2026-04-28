@@ -23,6 +23,7 @@ DeclareTask(TaskLCD);
 #define EDC_OFF                     1 /* Electronic Differential Control: OFF */
 
 static S8 EDC_flag;                   /* EDC flag */
+static S32 steering_angle; 
 static U8 touch_sensor_state;          /* touch edge tracker for EDC toggle */
 
 /* Prototypes */
@@ -80,7 +81,7 @@ TASK(TaskControl)
 {
   S32 analog_stick_left;  /* speed command data from GamePad */
   S32 analog_stick_right; /* steering command data from GamePad */
-  S32 steering_angle;
+  // S32 steering_angle;
   S32 steering_err;
   S32 steering_speed;
   S32 diff_gain;
@@ -199,4 +200,9 @@ void rv_set_touch_sensor_state(U8 v)
 {
   touch_sensor_state = v;
 }
+#endif
+
+#ifdef RV_MONITOR
+S32 rv_get_steering_angle(void) { return steering_angle; }
+void rv_set_steering_angle(S32 v) { steering_angle = v; }
 #endif

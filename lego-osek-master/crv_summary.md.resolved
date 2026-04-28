@@ -1,0 +1,190 @@
+# CRV (Conditionally Relevant Variable) Checking in lego-osek-master
+
+## What is a CRV check?
+
+A **Conditionally Relevant Variable (CRV)** check answers the question:
+
+> *"Can a single-bit upset (SEU) in variable **V** cause the system to violate safety property **P** when it wouldn't have violated **P** without the upset?"*
+
+If **yes** → the variable is **conditionally relevant** (CRV) to that property.
+If **no** → the variable is **not** CRV; a single-bit flip in it cannot, on its own, break the property.
+
+All CRV work lives under [cbmc_touch_edc/](file:///home/mohammed-ibrahim/Downloads/Work/PE_RE/Software_Testing/AutomatedStaticVerificationSystem/lego-osek-master/cbmc_touch_edc).
+
+---
+
+## System Under Test
+
+The controller is [nxtgt.c](file:///home/mohammed-ibrahim/Downloads/Work/PE_RE/Software_Testing/AutomatedStaticVerificationSystem/lego-osek-master/nxtgt.c) — an OSEK-based LEGO NXT "GT car" with:
+
+- **Touch sensor** on port S4: reads pressed (1) / not-pressed (0).
+- **`EDC_flag`** (Electronic Differential Control): toggled on a *rising edge* of the touch sensor.
+  ```c
+  // nxtgt.c lines 100-104
+  if (touch_sensor == 1 && touch_sensor_state == 0) {
+      EDC_flag = ~EDC_flag + 1;   // toggle between EDC_ON(-1) and EDC_OFF(1)
+  }
+  touch_sensor_state = touch_sensor;
+  ```
+- **`touch_sensor_state`**: edge-tracking variable that remembers the previous touch reading.
+
+The three internal variables under CRV analysis are:
+
+| # | Variable | Macro | Description |
+|---|----------|-------|-------------|
+| 1 | `rv_touch_input` (touch sensor reading) | `SEU_TARGET=1` | The raw sensor value fed to the controller |
+| 2 | `EDC_flag` | `SEU_TARGET=2` | The flag that controls differential steering |
+| 3 | `touch_sensor_state` | `SEU_TARGET=3` | The edge-tracker that detects rising edges |
+
+---
+
+## Safety Property: P7
+
+P7 is defined in the Copilot spec ([TouchEdcMon.hs](file:///home/mohammed-ibrahim/Downloads/Work/PE_RE/Software_Testing/AutomatedStaticVerificationSystem/lego-osek-master/cbmc_touch_edc/TouchEdcMon.hs)):
+
+```haskell
+let touchRises  = fr_touch && not prevTouch      -- rising edge
+let touchSteady = fr_touch == prevTouch           -- no edge
+let edcToggles  = fr_edc_flag /= prevEdc          -- EDC changed
+
+let p7_body = (not touchRises || edcToggles)      -- G(touch rises → EDC toggles)
+           && (not touchSteady || not edcToggles)  -- G(touch steady → EDC unchanged)
+let p7 = first || p7_body                         -- skip the very first sample
+```
+
+In plain English:
+
+> **P7:** *Globally, EDC_flag toggles **if and only if** the touch sensor has a rising edge.*
+
+- If touch rises → EDC must toggle.
+- If touch is steady → EDC must **not** toggle.
+
+The first step is always skipped (no previous values yet).
+
+---
+
+## Architecture of the CRV Check
+
+```mermaid
+flowchart TD
+    A["TouchEdcMon.hs<br/>(Copilot spec)"] -->|runhaskell| B["touch_edc_mon.c/h<br/>(generated monitor)"]
+    B --> C["touch_edc_mon_orig_wrap.c<br/>(#define step → touch_edc_step_orig)"]
+    B --> D["touch_edc_mon_seu_wrap.c<br/>(#define step → touch_edc_step_seu)"]
+    C --> E["trace_touch_edc.c<br/>(p7_publish, violation latches,<br/>monitor reset/query)"]
+    D --> E
+    E --> F["harness_crv.c<br/>(main: runs original + SEU,<br/>asserts violation_orig == violation_seu)"]
+    F --> G["nxtgt.c<br/>(TaskControl — controller under test)"]
+    F --> H["stubs_cbmc.c<br/>(deterministic sensor/motor stubs)"]
+    G --> H
+    F -->|CBMC| I{"main.assertion.1<br/>violation_orig == violation_seu"}
+    I -->|SUCCESS| J["NOT CRV"]
+    I -->|FAILURE| K["CRV"]
+```
+
+### Key components
+
+| File | Role |
+|------|------|
+| [TouchEdcMon.hs](file:///home/mohammed-ibrahim/Downloads/Work/PE_RE/Software_Testing/AutomatedStaticVerificationSystem/lego-osek-master/cbmc_touch_edc/TouchEdcMon.hs) | Haskell Copilot spec that defines property P7. `runhaskell` generates `touch_edc_mon.c/.h`. |
+| [touch_edc_mon.c](file:///home/mohammed-ibrahim/Downloads/Work/PE_RE/Software_Testing/AutomatedStaticVerificationSystem/lego-osek-master/cbmc_touch_edc/touch_edc_mon.c) | Generated C monitor. Tracks stream history (`s0`, `s1`, `s2`) and calls `touch_edc_violation()` when the guard fires. |
+| [touch_edc_mon_orig_wrap.c](file:///home/mohammed-ibrahim/Downloads/Work/PE_RE/Software_Testing/AutomatedStaticVerificationSystem/lego-osek-master/cbmc_touch_edc/touch_edc_mon_orig_wrap.c) / [touch_edc_mon_seu_wrap.c](file:///home/mohammed-ibrahim/Downloads/Work/PE_RE/Software_Testing/AutomatedStaticVerificationSystem/lego-osek-master/cbmc_touch_edc/touch_edc_mon_seu_wrap.c) | Preprocessor wrappers that `#include` the same monitor code but rename `step()` to `touch_edc_step_orig()` / `touch_edc_step_seu()` (and likewise for `touch_edc_violation`). This gives two independent monitor instances. |
+| [trace_touch_edc.c](file:///home/mohammed-ibrahim/Downloads/Work/PE_RE/Software_Testing/AutomatedStaticVerificationSystem/lego-osek-master/cbmc_touch_edc/trace_touch_edc.c) | Glue code: defines the Copilot externs (`fr_touch`, `fr_edc_flag`), violation latches (`p7_violation_orig/seu`), reset/query functions, and `p7_publish()`. |
+| [harness_crv.c](file:///home/mohammed-ibrahim/Downloads/Work/PE_RE/Software_Testing/AutomatedStaticVerificationSystem/lego-osek-master/cbmc_touch_edc/harness_crv.c) | **The main CRV harness.** Runs the controller twice and compares monitor outcomes. |
+| [stubs_cbmc.c](file:///home/mohammed-ibrahim/Downloads/Work/PE_RE/Software_Testing/AutomatedStaticVerificationSystem/lego-osek-master/cbmc_touch_edc/stubs_cbmc.c) | Deterministic stubs for OSEK/nxtOSEK APIs (motors return 0, BT returns zeros, touch returns `rv_touch_input`). |
+| [nxtgt.c](file:///home/mohammed-ibrahim/Downloads/Work/PE_RE/Software_Testing/AutomatedStaticVerificationSystem/lego-osek-master/nxtgt.c) | The actual controller; compiled with `-DRV_MONITOR` to expose `rv_get/set_EDC_flag()` and `rv_get/set_touch_sensor_state()` accessors. |
+
+---
+
+## How the Harness Works (harness_crv.c)
+
+### Step 1 — Setup
+```c
+// Same initial state for both runs
+int8_t  edc_flag_init    = 1;   // EDC_OFF
+uint8_t touch_state_init = 0;
+
+// Touch input sequence: nondeterministic but bounded to {0, 1}
+uint8_t touch_seq[STEPS];  // STEPS defaults to 6
+for (t = 0; t < STEPS; t++) {
+    touch_seq[t] = nondet_u8();
+    __CPROVER_assume(touch_seq[t] <= 1u);
+}
+```
+
+### Step 2 — Original run (no fault)
+```c
+controller_init_from_snapshot(edc_flag_init, touch_state_init);
+run_original(touch_seq);
+// run_original: for each step, sets rv_touch_input, calls TaskControl(),
+//               publishes (touch_pressed, EDC_flag) to monitor, steps monitor.
+int violation_original = p7_monitor_violation_orig();
+```
+
+### Step 3 — SEU run (single-bit flip)
+```c
+controller_init_from_snapshot(edc_flag_init, touch_state_init);
+run_seu(touch_seq);
+int violation_seu = p7_monitor_violation_seu();
+```
+
+In `run_seu()`, at one nondeterministically chosen step (`seu_step ∈ [1, STEPS)`), exactly one bit (`seu_bit ∈ [0, 7]`) of the target variable is flipped:
+
+| `SEU_TARGET` | What gets flipped |
+|--------------|-------------------|
+| 1 | `rv_touch_input = flip_u8_bit(touch_seq[t], seu_bit)` |
+| 2 | `rv_set_EDC_flag(flip_s8_bit(rv_get_EDC_flag(), seu_bit))` |
+| 3 | `rv_set_touch_sensor_state(flip_u8_bit(rv_get_touch_sensor_state(), seu_bit))` |
+
+### Step 4 — The CRV assertion
+```c
+__CPROVER_assert(violation_original == violation_seu,
+    "CRV check: SUCCESS => variable not CRV; ASSERTION FAILURE => variable is CRV");
+```
+
+- **SUCCESS** (assertion holds for all inputs & fault points): no single-bit flip in that variable can cause a P7 violation that wouldn't already exist → **NOT CRV**.
+- **FAILURE** (CBMC finds a counterexample): there exists an input sequence and a fault injection point where the SEU run violates P7 but the original doesn't → **CRV**.
+
+---
+
+## Expected Results
+
+| Variable | CBMC Target | Result | Interpretation |
+|----------|-------------|--------|----------------|
+| `touch_input` | `cbmc_crv_touch` | **SUCCESS** | Not CRV — a bit-flip in the raw sensor reading cannot, on its own, make EDC toggle incorrectly w.r.t. the (possibly flipped) touch value, because the monitor sees the same flipped value. |
+| `EDC_flag` | `cbmc_crv_edc` | **FAILURE** | **CRV** — flipping a bit in `EDC_flag` can cause it to toggle without a rising edge (or fail to toggle on one), violating P7. |
+| `touch_sensor_state` | `cbmc_crv_touch_state` | **FAILURE** | **CRV** — flipping a bit in the edge tracker can make the controller see a false rising edge (or miss a real one), violating P7. |
+
+---
+
+## How to Run
+
+```bash
+cd lego-osek-master/cbmc_touch_edc
+
+# Run all three checks and get a summary table
+make crv_summary
+
+# Run individual checks
+make cbmc_crv_touch          # SEU_TARGET=1
+make cbmc_crv_edc            # SEU_TARGET=2
+make cbmc_crv_touch_state    # SEU_TARGET=3
+
+# Get counterexample traces for CRV variables
+make cbmc_crv_edc_trace
+make cbmc_crv_touch_state_trace
+
+# Override loop unwind depth (default 80)
+UNWIND=120 make crv_summary
+```
+
+---
+
+## Sanity Check
+
+A separate harness ([harness_sanity_edcflip.c](file:///home/mohammed-ibrahim/Downloads/Work/PE_RE/Software_Testing/AutomatedStaticVerificationSystem/lego-osek-master/cbmc_touch_edc/harness_sanity_edcflip.c)) performs a **deterministic** sanity check:
+
+- Hardcoded steady touch (all zeros, no rising edge).
+- Original run: asserts P7 is **not** violated (no edge → no toggle → safe).
+- SEU run: forces a bit-0 flip of `EDC_flag` at step 1 → EDC changes without a rising edge → asserts P7 **is** violated.
+
+This validates that the monitor and harness infrastructure are wired correctly before trusting the nondeterministic CRV results.

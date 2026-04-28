@@ -3,6 +3,7 @@
 #include <stdint.h>
 
 #include "kernel.h"
+#include "ecrobot_interface.h"
 
 #include "seu_support.h"
 
@@ -43,10 +44,14 @@ uint8_t nondet_u8(void);
 #define SEU_TOUCH_INPUT 1
 #define SEU_EDC_FLAG 2
 #define SEU_TOUCH_STATE 3
+#define SEU_STEERING_ANGLE 4
 
 #ifndef SEU_TARGET
 #define SEU_TARGET SEU_TOUCH_INPUT
 #endif
+
+S32 rv_get_steering_angle(void);
+void rv_set_steering_angle(S32 v);
 
 static void controller_init_from_snapshot(int8_t edc_flag_init, uint8_t touch_state_init)
 {
@@ -122,6 +127,16 @@ static void run_seu(const uint8_t touch_seq[STEPS])
       rv_set_touch_sensor_state(flip_u8_bit(rv_get_touch_sensor_state(), seu_bit));
     }
 #endif
+
+#if SEU_TARGET == SEU_STEERING_ANGLE
+if (t == seu_step) {
+    // Use a new flip_s32_bit helper or cast to u32
+    uint32_t val = (uint32_t)rv_get_steering_angle();
+    val ^= (1u << (seu_bit % 32)); 
+    rv_set_steering_angle((S32)val);
+}
+#endif
+
 
     TaskControl();
 
