@@ -1,0 +1,237 @@
+-- mdl2lus - 2014 ver. 0.41 (SHA 79444ea)
+-- Thu Feb 11 18:42:29 2016
+const kp_teta : real;
+const white_treshold : real;
+const rotate_speed_neg : real;
+const obstacle_treshold : real;
+const pi : real;
+const black_treshold : real;
+const rotate_speed : real;
+const ki_teta : real;
+node Controller(Cg: real; Cd: real; Co: real) returns (u_d: real; u_g: real);
+var
+   w_000: real;
+   w_001: real;
+   w_002: bool;
+   w_003: real;
+   w_004: real;
+   w_005: real;
+   w_006: real;
+   w_007: real;
+   w_008: bool;
+   w_009: bool;
+   w_010: real;
+   w_011: real;
+   w_012: real;
+   w_013: real;
+let
+   u_d = w_005;
+   w_010 = Cg;
+   w_000 = rotate_speed;
+   w_009 = WBW(w_010, w_008);
+   w_007 = Co;
+   w_002 = Obstacle_detector(w_007, w_008);
+   w_012 = Cd;
+   (w_011, w_013) = Calcul_ecart(w_010, w_012);
+   (w_006, w_004) = Subsystem(w_011, w_013);
+   w_003 = (if w_002 then w_001 else w_004);
+   u_g = w_003;
+   w_008 = (false -> (pre w_009));
+   w_005 = (if w_002 then w_000 else w_006);
+   w_001 = rotate_speed_neg;
+tel
+node Subsystem(eps_theta: real; eps_d: real) returns (u_d: real; u_g: real);
+var
+   w_000: real;
+   w_001: real;
+   w_002: real;
+   w_003: real;
+   w_004: real;
+   w_005: real;
+   w_006: real;
+   w_007: real;
+   w_008: real;
+   w_009: real;
+   w_010: real;
+   w_011: real;
+   w_012: real;
+   w_013: real;
+   w_014: real;
+   w_015: real;
+   w_016: real;
+let
+   w_000 = eps_d;
+   u_d = w_002;
+   w_002 = ((1.0 / 2.0) * w_014);
+   w_001 = ((1.0 / 2.0) * w_013);
+   w_007 = ((- w_009) + w_011);
+   w_014 = (w_006 + w_008);
+   w_006 = (w_016 + w_015);
+   w_005 = (0.002 * w_010);
+   w_010 = eps_theta;
+   w_015 = (kp_teta * w_010);
+   w_012 = (2.0 * w_006);
+   w_011 = (0.005 * w_000);
+   w_016 = (ki_teta * w_004);
+   u_g = w_001;
+   w_003 = (0.0 -> (pre w_004));
+   w_009 = (if w_012<0.0 then -w_012 else w_012);
+   w_008 = (2.0 * w_007);
+   w_004 = (w_005 + w_003);
+   w_013 = ((- w_006) + w_008);
+tel
+node Calcul_ecart(Cg: real; Cd: real) returns (eps_theta: real; eps_d: real);
+var
+   w_000: real;
+   w_001: real;
+   w_002: real;
+   w_003: real;
+   w_004: real;
+let
+   w_004 = (w_003 - w_002);
+   eps_d = w_000;
+   w_002 = Cg;
+   w_000 = (w_003 + w_002);
+   eps_theta = w_001;
+   w_003 = Cd;
+   w_001 = ((pi / 200.0) * w_004);
+tel
+node Obstacle_detector(Co: real; R: bool) returns (obstacle_detected: bool);
+var
+   w_000: bool;
+   w_001: bool;
+   w_002: bool;
+   w_003: real;
+let
+   w_002 = FF_03(w_000, w_001);
+   w_003 = Co;
+   w_001 = R;
+   w_000 = (w_003 < obstacle_treshold);
+   obstacle_detected = w_002;
+tel
+node WBW(Cg: real; R: bool) returns (WBW: bool);
+var
+   w_000: bool;
+   w_001: bool;
+   w_002: bool;
+   w_003: bool;
+   w_004: bool;
+   w_005: bool;
+   w_006: real;
+let
+   w_006 = Cg;
+   w_003 = white0(w_006, w_005);
+   WBW = w_000;
+   w_002 = (w_004 and w_003);
+   w_001 = white1(w_006, w_005);
+   w_004 = black(w_006, w_005);
+   w_005 = R;
+   w_000 = (w_001 and w_002);
+tel
+node FF_03(S: bool; R: bool) returns (Q: bool);
+var
+   w_000: bool;
+   w_001: bool;
+   w_002: bool;
+   w_003: bool;
+   w_004: bool;
+   w_005: bool;
+let
+   Q = w_003;
+   w_001 = (not w_002);
+   w_000 = S;
+   w_003 = (w_005 and w_001);
+   w_002 = R;
+   w_004 = (false -> (pre w_003));
+   w_005 = (w_004 or w_000);
+tel
+node black(Cg: real; R: bool) returns (Out1: bool);
+var
+   w_000: bool;
+   w_001: real;
+   w_002: bool;
+   w_003: bool;
+let
+   w_001 = Cg;
+   Out1 = w_003;
+   w_003 = FF_02(w_000, w_002);
+   w_002 = R;
+   w_000 = (w_001 <= black_treshold);
+tel
+node white1(Cg: real; R: bool) returns (Out1: bool);
+var
+   w_000: bool;
+   w_001: real;
+   w_002: bool;
+   w_003: bool;
+let
+   w_001 = Cg;
+   Out1 = w_003;
+   w_003 = FF(w_000, w_002);
+   w_002 = R;
+   w_000 = (w_001 >= white_treshold);
+tel
+node white0(Cg: real; R: bool) returns (Out1: bool);
+var
+   w_000: bool;
+   w_001: real;
+   w_002: bool;
+   w_003: bool;
+let
+   w_001 = Cg;
+   Out1 = w_003;
+   w_003 = FF_01(w_000, w_002);
+   w_002 = R;
+   w_000 = (w_001 <= white_treshold);
+tel
+node FF_02(S: bool; R: bool) returns (Q: bool);
+var
+   w_000: bool;
+   w_001: bool;
+   w_002: bool;
+   w_003: bool;
+   w_004: bool;
+   w_005: bool;
+let
+   Q = w_002;
+   w_000 = (not w_001);
+   w_003 = S;
+   w_002 = (w_005 and w_000);
+   w_001 = R;
+   w_004 = (false -> (pre w_002));
+   w_005 = (w_003 or w_004);
+tel
+node FF(S: bool; R: bool) returns (Q: bool);
+var
+   w_000: bool;
+   w_001: bool;
+   w_002: bool;
+   w_003: bool;
+   w_004: bool;
+   w_005: bool;
+let
+   Q = w_002;
+   w_000 = (not w_001);
+   w_003 = S;
+   w_002 = (w_005 and w_000);
+   w_001 = R;
+   w_004 = (false -> (pre w_002));
+   w_005 = (w_003 or w_004);
+tel
+node FF_01(S: bool; R: bool) returns (Q: bool);
+var
+   w_000: bool;
+   w_001: bool;
+   w_002: bool;
+   w_003: bool;
+   w_004: bool;
+   w_005: bool;
+let
+   Q = w_002;
+   w_000 = (not w_001);
+   w_003 = S;
+   w_002 = (w_005 and w_000);
+   w_001 = R;
+   w_004 = (false -> (pre w_002));
+   w_005 = (w_003 or w_004);
+tel

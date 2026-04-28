@@ -1,0 +1,77 @@
+-- mdl2lus - 2014 ver. 0.41 (SHA 79444ea)
+-- Thu Feb 11 18:43:36 2016
+const kp_teta : real;
+const pi : real;
+const ki_teta : real;
+node motor_control(Cg: real; Cd: real) returns (u_d: real; u_g: real);
+var
+   w_000: real;
+   w_001: real;
+   w_002: real;
+   w_003: real;
+   w_004: real;
+   w_005: real;
+let
+   u_d = w_001;
+   w_002 = Cg;
+   w_004 = Cd;
+   (w_003, w_005) = Calcul_ecart(w_002, w_004);
+   (w_001, w_000) = Subsystem(w_003, w_005);
+   u_g = w_000;
+tel
+node Subsystem(eps_theta: real; eps_d: real) returns (u_d: real; u_g: real);
+var
+   w_000: real;
+   w_001: real;
+   w_002: real;
+   w_003: real;
+   w_004: real;
+   w_005: real;
+   w_006: real;
+   w_007: real;
+   w_008: real;
+   w_009: real;
+   w_010: real;
+   w_011: real;
+   w_012: real;
+   w_013: real;
+   w_014: real;
+   w_015: real;
+   w_016: real;
+let
+   w_000 = eps_d;
+   u_d = w_002;
+   w_002 = ((1.0 / 2.0) * w_014);
+   w_001 = ((1.0 / 2.0) * w_013);
+   w_007 = ((- w_009) + w_011);
+   w_014 = (w_006 + w_008);
+   w_006 = (w_016 + w_015);
+   w_005 = (0.002 * w_010);
+   w_010 = eps_theta;
+   w_015 = (kp_teta * w_010);
+   w_012 = (2.0 * w_006);
+   w_011 = (0.005 * w_000);
+   w_016 = (ki_teta * w_004);
+   u_g = w_001;
+   w_003 = (0.0 -> (pre w_004));
+   w_009 = (if w_012<0.0 then -w_012 else w_012);
+   w_008 = (2.0 * w_007);
+   w_004 = (w_005 + w_003);
+   w_013 = ((- w_006) + w_008);
+tel
+node Calcul_ecart(Cg: real; Cd: real) returns (eps_theta: real; eps_d: real);
+var
+   w_000: real;
+   w_001: real;
+   w_002: real;
+   w_003: real;
+   w_004: real;
+let
+   w_004 = (w_003 - w_002);
+   eps_d = w_000;
+   w_002 = Cg;
+   w_000 = (w_003 + w_002);
+   eps_theta = w_001;
+   w_003 = Cd;
+   w_001 = ((pi / 200.0) * w_004);
+tel
