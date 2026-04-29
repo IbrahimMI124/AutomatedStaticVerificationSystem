@@ -13,10 +13,11 @@ This directory contains a formal verification framework that identifies **Condit
 2. [Safety Property P7](#2-safety-property-p7)
 3. [File-by-File Breakdown](#3-file-by-file-breakdown)
 4. [How the Verification Works](#4-how-the-verification-works)
-5. [Input Generation Strategy](#5-input-generation-strategy)
-6. [Makefile Targets](#6-makefile-targets)
-7. [Results](#7-results)
-8. [How to Add a New Variable](#8-how-to-add-a-new-variable)
+5. [How nxtgt.c Works Without Real Sensors](#5-how-nxtgtc-works-without-real-sensors)
+6. [Input Generation Strategy](#6-input-generation-strategy)
+7. [Makefile Targets](#7-makefile-targets)
+8. [Results](#8-results)
+9. [How to Add a New Variable](#9-how-to-add-a-new-variable)
 
 ---
 
@@ -105,10 +106,6 @@ extern int8_t fr_edc_flag;      // Must be set before calling step()
 void touch_edc_violation(void); // Called by the monitor when P7 is violated
 void step(void);                // Advance the monitor by one time step
 ```
-
-> **Important**: These files are **auto-generated**. Do not edit them manually. Modify `TouchEdcMon.hs` and run `make gen` instead.
-
----
 
 ### 3.3 `touch_edc_mon_orig_wrap.c` and `touch_edc_mon_seu_wrap.c` — Monitor Wrappers
 
@@ -306,17 +303,17 @@ The framework uses a **Dual-Execution Comparison** strategy:
 ┌──────────────────────────────────────────────────────────┐
 │  main()                                                  │
 │                                                          │
-│  1. Generate symbolic touch_seq[0..5] ∈ {0, 1}          │
+│  1. Generate symbolic touch_seq[0..5] ∈ {0, 1}           │
 │                                                          │
-│  2. ┌─── Original Run ───┐   ┌──── SEU Run ────┐        │
-│     │ Same init state     │   │ Same init state  │        │
-│     │ Same touch_seq      │   │ Same touch_seq   │        │
-│     │ No fault            │   │ 1 bit-flip at    │        │
-│     │                     │   │ nondet step/bit  │        │
-│     │ → violation_orig    │   │ → violation_seu  │        │
-│     └─────────────────────┘   └──────────────────┘        │
+│  2. ┌─── Original Run ───┐   ┌──── SEU Run ────┐         │
+│     │ Same init state     │   │ Same init state  │       |
+│     │ Same touch_seq      │   │ Same touch_seq   │       │
+│     │ No fault            │   │ 1 bit-flip at    │       │
+│     │                     │   │ nondet step/bit  │       │
+│     │ → violation_orig    │   │ → violation_seu  │       │
+│     └─────────────────────┘   └──────────────────┘       │
 │                                                          │
-│  3. Assert: violation_orig == violation_seu               │
+│  3. Assert: violation_orig == violation_seu              │
 │     SUCCESS → NOT CRV    |    FAILURE → CRV              │
 └──────────────────────────────────────────────────────────┘
 ```
@@ -325,7 +322,111 @@ The framework uses a **Dual-Execution Comparison** strategy:
 
 ---
 
-## 5. Input Generation Strategy
+## 5. How `nxtgt.c` Works Without Real Sensors
+
+In normal operation on a Lego NXT robot, `nxtgt.c` calls hardware API functions to interact with physical sensors and motors:
+
+| API Call in `nxtgt.c` | What it does on real hardware |
+| :--- | :--- |
+| `ecrobot_get_touch_sensor(NXT_PORT_S4)` | Reads the physical touch sensor (pressed = 1, released = 0) |
+| `nxt_motor_get_count(MOTOR_STEERING)` | Reads the steering motor encoder position (degrees) |
+| `ecrobot_read_bt_packet(buf, 32)` | Reads speed/steering commands from the Bluetooth gamepad |
+| `nxt_motor_set_speed(port, speed, brake)` | Drives the wheel/steering motors |
+| `ecrobot_get_sonar_sensor(NXT_PORT_S2)` | Reads the ultrasonic distance sensor |
+
+None of these work without the NXT hardware and nxtOSEK firmware. The CBMC verification framework removes the hardware dependency using a **three-layer substitution architecture**:
+
+### Layer 1: Minimal Headers (`host_single/include/`)
+
+Instead of including the real nxtOSEK headers (which pull in ARM-specific code, RTOS internals, etc.), the Makefile passes `-I../host_single/include`. These provide:
+
+- **Type aliases only**: `S8 → int8_t`, `U8 → uint8_t`, `S32 → int32_t`, plus port enums (`NXT_PORT_A`, `NXT_PORT_S4`, etc.)
+- **OSEK macros redefined as plain C**: `TASK(name)` → `void name(void)`, `TerminateTask()` → `return`
+
+This means `nxtgt.c` compiles on a standard host machine (x86/x64) without any NXT cross-compilation toolchain.
+
+### Layer 2: Stub Functions (`stubs_cbmc.c`)
+
+Every hardware API is replaced with a **deterministic stub**:
+
+```c
+// The harness controls this variable
+uint8_t rv_touch_input;
+
+// Touch sensor returns whatever the harness sets
+U8 ecrobot_get_touch_sensor(int port) {
+    return (U8)(rv_touch_input ? 1u : 0u);   // ← harness-driven
+}
+
+// Motor encoder always returns 0 (no physical steering)
+S32 nxt_motor_get_count(int port) {
+    return 0;                                  // ← deterministic
+}
+
+// Bluetooth always returns zeros (no gamepad input)
+void ecrobot_read_bt_packet(U8 *buf, size_t len) {
+    for (size_t i = 0; i < len; i++) buf[i] = 0;  // ← deterministic
+}
+
+// Motor writes are simply discarded
+void nxt_motor_set_speed(int port, S32 speed, int brake) {
+    (void)port; (void)speed; (void)brake;      // ← no-op
+}
+```
+
+**Key insight**: The only sensor that *matters* for the property being verified (touch→EDC toggle) is the **touch sensor**. So it is the only one made controllable via `rv_touch_input`. Everything else is zeroed out or no-oped because it is irrelevant to P7.
+
+### Layer 3: The Harness (`harness_crv.c`)
+
+The harness feeds symbolic values into `rv_touch_input` before each `TaskControl()` call:
+
+```c
+// CBMC generates ALL possible 6-step touch sequences
+uint8_t touch_seq[STEPS];
+for (unsigned t = 0; t < STEPS; t++) {
+    touch_seq[t] = nondet_u8();                // symbolic value
+    __CPROVER_assume(touch_seq[t] <= 1u);      // constrain to {0, 1}
+}
+
+// Each step: set the sensor value, then run the controller
+for (unsigned t = 0; t < STEPS; t++) {
+    rv_touch_input = touch_seq[t];             // "sensor reading"
+    TaskControl();                              // real nxtgt.c logic
+}
+```
+
+`nondet_u8()` is a **CBMC built-in** that represents a completely unconstrained value. The `__CPROVER_assume` constraint then restricts it to valid touch sensor readings (0 or 1). CBMC's SAT solver exhaustively explores *every* possible combination — this is not random testing, it is **complete formal verification** over the bounded input space.
+
+### Complete Data Flow
+
+```
+CBMC nondet ──► touch_seq[t] ──► rv_touch_input ──► ecrobot_get_touch_sensor() stub
+                                                           │
+                                                           ▼
+                                                    nxtgt.c TaskControl()
+                                                           │
+                                                    reads touch_sensor
+                                                    updates EDC_flag
+                                                    updates touch_sensor_state
+                                                           │
+                                                           ▼
+                                                    rv_get_EDC_flag() ──► P7 monitor
+```
+
+In the SEU run, one of the intermediate variables (`rv_touch_input`, `EDC_flag`, `touch_sensor_state`, or `steering_angle` — depending on `SEU_TARGET`) gets a single bit flipped at a nondeterministically chosen step, and CBMC checks whether that corruption can cause the P7 safety property to diverge from the original run.
+
+### Sensor Simulation Summary
+
+| Sensor | Simulation Method | Rationale |
+| :--- | :--- | :--- |
+| **Touch sensor** | `nondet_u8()` constrained to `{0, 1}` | This is the input relevant to P7. CBMC explores all possible 6-step press/release sequences. |
+| **Motor encoder** | Always returns `0` | Steering angle is an internal state variable, not an external input. Fixed to simplify the model. |
+| **Bluetooth gamepad** | Always returns `{0, 0, ...}` | Speed/steering commands are irrelevant to the touch→EDC property. |
+| **Sonar** | Always returns `0` | Only used for data logging in `TaskSonar`, has no control effect on `TaskControl`. |
+
+---
+
+## 6. Input Generation Strategy
 
 | Input | Source | Method |
 | :--- | :--- | :--- |
@@ -340,7 +441,7 @@ Only the touch sensor is made symbolic because P7 only concerns touch/EDC coupli
 
 ---
 
-## 6. Makefile Targets
+## 7. Makefile Targets
 
 ### Quick Reference
 
@@ -373,7 +474,7 @@ make clean
 
 ---
 
-## 7. Results
+## 8. Results
 
 | Variable | SEU_TARGET | Result | Explanation |
 | :--- | :--- | :--- | :--- |
@@ -384,7 +485,7 @@ make clean
 
 ---
 
-## 8. How to Add a New Variable
+## 9. How to Add a New Variable
 
 To check a new variable for CRV:
 
