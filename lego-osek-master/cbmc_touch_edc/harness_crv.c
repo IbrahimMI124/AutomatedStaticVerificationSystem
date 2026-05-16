@@ -71,7 +71,7 @@ static int8_t flip_s8_bit(int8_t v, uint8_t bit)
   return (int8_t)uv;
 }
 
-static void run_original(const uint8_t touch_seq[STEPS])
+static void run_original(const uint8_t touch_seq[STEPS], bool violation_seq[STEPS])
 {
   p7_monitor_reset_orig();
 
@@ -85,10 +85,13 @@ static void run_original(const uint8_t touch_seq[STEPS])
 
     p7_publish(touch_pressed, edc_flag);
     touch_edc_step_orig();
+
+    // Capture the current violation status for this timestep.
+    violation_seq[t] = p7_monitor_violation_orig();
   }
 }
 
-static void run_seu(const uint8_t touch_seq[STEPS])
+static void run_seu(const uint8_t touch_seq[STEPS], bool violation_seq[STEPS])
 {
   p7_monitor_reset_seu();
 
@@ -145,6 +148,9 @@ if (t == seu_step) {
 
     p7_publish(touch_pressed, edc_flag);
     touch_edc_step_seu();
+
+    // Capture the current violation status for this timestep.
+    violation_seq[t] = p7_monitor_violation_seu();
   }
 }
 
@@ -153,6 +159,9 @@ int main(void)
   // Fixed initialization (same for both runs)
   int8_t edc_flag_init = (int8_t)1;   // EDC_OFF
   uint8_t touch_state_init = 0u;
+
+  bool violation_seq_orig[STEPS];
+  bool violation_seq_seu[STEPS];
 
   uint8_t touch_seq[STEPS];
 #ifdef FORCE_CEX
@@ -172,12 +181,12 @@ int main(void)
 
   // Original execution
   controller_init_from_snapshot(edc_flag_init, touch_state_init);
-  run_original(touch_seq);
+  run_original(touch_seq, violation_seq_orig);
   int violation_original = p7_monitor_violation_orig();
 
   // SEU execution (same init + same inputs, but with a single-bit upset)
   controller_init_from_snapshot(edc_flag_init, touch_state_init);
-  run_seu(touch_seq);
+  run_seu(touch_seq, violation_seq_seu);
   int violation_seu = p7_monitor_violation_seu();
 
 #ifdef FORCE_CEX
@@ -193,10 +202,16 @@ int main(void)
 #endif
 
 #ifdef CBMC
-  __CPROVER_assert(violation_original == violation_seu,
-                  "CRV check: SUCCESS => variable not CRV; ASSERTION FAILURE => variable is CRV");
+  for (unsigned t = 0; t < STEPS; t++)
+  {
+    __CPROVER_assert(violation_seq_orig[t] == violation_seq_seu[t],
+                    "CRV check (timestep): SUCCESS => variable not CRV; ASSERTION FAILURE => variable is CRV");
+  }
 #else
-  assert(violation_original == violation_seu);
+  for (unsigned t = 0; t < STEPS; t++)
+  {
+    assert(violation_seq_orig[t] == violation_seq_seu[t]);
+  }
 #endif
 
   return 0;
