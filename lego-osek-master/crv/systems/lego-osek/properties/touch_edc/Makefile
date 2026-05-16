@@ -2,7 +2,7 @@ CC ?= gcc
 CFLAGS ?= -std=c11 -O0 -g -Wall -Wextra -Werror -fno-strict-aliasing
 
 # Reuse the host_single minimal nxtOSEK headers
-INCLUDES = -I. -I../host_single/include
+INCLUDES = -I. -I../../common -I../../../../../host_single/include
 
 # CBMC unwinding needs to cover the longest bounded loops we execute.
 # In particular, the BT read stub clears a 32-byte buffer.
@@ -14,19 +14,19 @@ MON_H = $(MON_NAME).h
 MON_TYPES = $(MON_NAME)_types.h
 
 SRCS_COMMON = \
-	../nxtgt.c \
-	stubs_cbmc.c \
+	../../../../../nxtgt.c \
+	../../common/stubs_cbmc.c \
 	trace_touch_edc.c \
-	seu_support.c \
+	../../common/seu_support.c \
 	touch_edc_mon_orig_wrap.c \
 	touch_edc_mon_seu_wrap.c \
 	harness_crv.c
 
 SRCS_SANITY_EDCFLIP = \
-	../nxtgt.c \
-	stubs_cbmc.c \
+	../../../../../nxtgt.c \
+	../../common/stubs_cbmc.c \
 	trace_touch_edc.c \
-	seu_support.c \
+	../../common/seu_support.c \
 	touch_edc_mon_orig_wrap.c \
 	touch_edc_mon_seu_wrap.c \
 	harness_sanity_edcflip.c

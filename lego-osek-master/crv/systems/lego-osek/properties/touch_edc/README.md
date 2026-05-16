@@ -338,7 +338,7 @@ None of these work without the NXT hardware and nxtOSEK firmware. The CBMC verif
 
 ### Layer 1: Minimal Headers (`host_single/include/`)
 
-Instead of including the real nxtOSEK headers (which pull in ARM-specific code, RTOS internals, etc.), the Makefile passes `-I../host_single/include`. These provide:
+Instead of including the real nxtOSEK headers (which pull in ARM-specific code, RTOS internals, etc.), the Makefile passes a repo-root relative include like `-I<repo_root>/host_single/include`. These provide:
 
 - **Type aliases only**: `S8 → int8_t`, `U8 → uint8_t`, `S32 → int32_t`, plus port enums (`NXT_PORT_A`, `NXT_PORT_S4`, etc.)
 - **OSEK macros redefined as plain C**: `TASK(name)` → `void name(void)`, `TerminateTask()` → `return`
